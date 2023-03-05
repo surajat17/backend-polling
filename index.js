@@ -11,7 +11,7 @@ const corsOptions = {
   origin: 'http://127.0.0.1:5173',
   credentials: true
 };
-app.use(cors(corsOptions));
+app.use(cors({ origin: '*' }));
 let students = [];
 let teacher = null;
 let onlineUsers = {};
@@ -19,6 +19,10 @@ let question = null;
 let participants = 0;
 let results = new Map();
 let total = 0;
+
+app.use("/", (req, res) => {
+  res.json({ message: "helloo" });
+});
 
 io.on("connect", (socket) => {
   console.log(`${socket.id} connected`);
