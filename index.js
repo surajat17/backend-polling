@@ -1,110 +1,123 @@
-const express = require("express");
-const cors = require("cors");
-const http = require("http");
-const socketio = require("socket.io");
-const resultsDB = require("./db");
+const express = require('express');
+const cors = require('cors');
+const http = require('http');
+const socketio = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketio(server);
 
-app.use(cors({ origin: '*' }));
+const resultsDB = [];
+const onlineUsers = {};
+const results = new Map();
 
 let students = [];
 let teacher = null;
-let onlineUsers = {};
 let question = null;
 let participants = 0;
-let results = new Map();
 let total = 0;
 
-io.on("connect", (socket) => {
+app.use(cors("*"));
+
+io.on('connect', handleConnect);
+
+function handleConnect(socket) {
   console.log(`${socket.id} connected`);
 
-  socket.on("join", ({ role, user }, callback) => {
-    onlineUsers[socket.id] = { role, user };
-    if (role === "teacher") {
-      teacher = user;
+  socket.on('join', handleJoin);
+
+  socket.on('submit-question', handleSubmitQuestion);
+
+  socket.on('submit-answer', handleSubmitAnswer);
+
+  socket.on('kick', handleKick);
+
+  socket.on('message', handleMessage);
+
+  socket.on('disconnect', handleDisconnect);
+}
+
+function handleJoin({ role, user }, callback) {
+  onlineUsers[this.id] = { role, user };
+  if (role === 'teacher') {
+    teacher = user;
+    resultsDB.length = 0;
+  } else {
+    students.push(user);
+    students = students.filter((v, i, a) => a.findIndex((v2) => v2.sid === v.sid) === i);
+  }
+  const connected = {
+    students,
+    teacher,
+  };
+  console.log(connected);
+  io.emit('connected', connected);
+  callback();
+}
+
+function handleSubmitQuestion(data, callback) {
+  results.clear();
+  total = 0;
+  question = data;
+  data.options.forEach((opt) => {
+    results.set(opt, 0);
+  });
+  participants = students.length;
+  io.emit('question', question);
+  callback();
+}
+
+function handleSubmitAnswer(data, callback) {
+  if (data !== 'Not answered') results.set(data, results.get(data) + 1);
+  total++;
+  const res = {
+    votes: Object.fromEntries(results),
+    participants,
+    total,
+    question: question.question,
+    correct: question.correct,
+  };
+  io.emit('results', res);
+
+  if (total === participants) {
+    resultsDB.push(res);
+  }
+
+  callback();
+}
+
+function handleKick(sid, callback) {
+  io.to(sid).emit('kick');
+  callback();
+}
+
+function handleMessage(message) {
+  io.emit('message', message);
+}
+
+function handleDisconnect(reason) {
+  if (onlineUsers[this.id]) {
+    const { role } = onlineUsers[this.id];
+    if (role === 'teacher') {
+      teacher = null;
     } else {
-      students.push(user);
-      students = students.filter(
-        (v, i, a) => a.findIndex((v2) => v2.sid === v.sid) === i
-      );
+      let newStudents = students.filter((student) => student.sid !== this.id);
+      students = newStudents;
     }
-    const connected = {
-      students,
-      teacher,
-    };
-    console.log(connected);
-    io.emit("connected", connected);
-    callback();
-  });
+    delete onlineUsers[this.id];
+  }
+  const connected = {
+    students,
+    teacher,
+  };
+  console.log(connected);
+  io.emit('connected', connected);
+  console.log(`${this.id} disconnected due to ${reason}`);
+}
 
-  socket.on("submit-question", (data, callback) => {
-    results = new Map();
-    total = 0;
-    question = data;
-    data.options.forEach((opt) => {
-      results.set(opt, 0);
-    });
-    participants = students.length;
-    io.emit("question", question);
-    callback();
-  });
+app.get('/results', handleGetResults);
 
-  socket.on("submit-answer", (data, callback) => {
-    if (data !== "Not answered") results.set(data, results.get(data) + 1);
-    total++;
-    // console.log(data, results, total, participants);
-    const res = {
-      votes: Object.fromEntries(results),
-      participants,
-      total,
-      question: question.question,
-      correct: question.correct,
-    };
-    io.emit("results", res);
-
-    if (total === participants) {
-      resultsDB.insert(res, (_, err) => console.error(err));
-    }
-
-    callback();
-  });
-
-  socket.on("kick", (sid, callback) => {
-    io.to(sid).emit("kick");
-    callback();
-  });
-
-  socket.on("message", (message) => {
-    io.emit("message", message);
-  });
-
-  socket.on("disconnect", (reason) => {
-    if (onlineUsers[socket.id]) {
-      const { role } = onlineUsers[socket.id];
-      if (role === "teacher") {
-        teacher = null;
-      } else {
-        let newStudents = students.filter(
-          (student) => student.sid !== socket.id
-        );
-        students = newStudents;
-      }
-      delete onlineUsers[socket.id];
-    }
-    const connected = {
-      students,
-      teacher,
-    };
-    console.log(connected);
-    io.emit("connected", connected);
-    console.log(`${socket.id} disconnected due to ${reason}`);
-  });
-});
-
-app.get("/results", (req, res) => {
+function handleGetResults(req, res) {
   if (!question) {
     res.sendStatus(404);
     return;
@@ -116,28 +129,28 @@ app.get("/results", (req, res) => {
     question: question.question,
     correct: question.correct,
   });
-});
+}
 
-app.get("/teacher", (req, res) => {
+app.get('/teacher', handleGetTeacher);
+
+function handleGetTeacher(req, res) {
   res.send(teacher);
-});
+}
 
-app.get("/history", (req, res) => {
-  resultsDB.find({}, (err, docs) => {
-    if (err) {
-      console.error(err);
-      return;
-    }
-    res.send(docs);
-  });
-});
+app.get('/history', handleGetHistory);
 
-app.get("/participants", (req, res) => {
+function handleGetHistory(req, res) {
+  res.send(resultsDB);
+}
+
+app.get('/participants', handleGetParticipants);
+
+function handleGetParticipants(req, res) {
   res.send({
     students,
     teacher,
   });
-});
+}
 
 server.listen(process.env.PORT || 5000, () =>
   console.log("server running at http://localhost:5000")
