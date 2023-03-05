@@ -16,7 +16,7 @@ let teacher = null;
 let question = null;
 let participants = 0;
 let total = 0;
-app.use(cors({ origin: true }));
+app.use(cors({ origin: '*' }));
 
 io.on('connect', handleConnect);
 
