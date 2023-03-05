@@ -2,16 +2,13 @@ const express = require("express");
 const cors = require("cors");
 const http = require("http");
 const socketio = require("socket.io");
+const resultsDB = require("./db");
 
 const app = express();
 const server = http.createServer(app);
 const io = socketio(server);
-const resultsDB = [];
-const corsOptions = {
-  origin: 'http://127.0.0.1:5173',
-  credentials: true
-};
-app.use(cors({ origin: '*' }));
+
+app.use(cors());
 let students = [];
 let teacher = null;
 let onlineUsers = {};
@@ -19,7 +16,6 @@ let question = null;
 let participants = 0;
 let results = new Map();
 let total = 0;
-
 
 io.on("connect", (socket) => {
   console.log(`${socket.id} connected`);
@@ -69,7 +65,7 @@ io.on("connect", (socket) => {
     io.emit("results", res);
 
     if (total === participants) {
-      resultsDB.push(res);
+      resultsDB.insert(res, (_, err) => console.error(err));
     }
 
     callback();
@@ -126,7 +122,13 @@ app.get("/teacher", (req, res) => {
 });
 
 app.get("/history", (req, res) => {
-  return resultsDB;
+  resultsDB.find({}, (err, docs) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+    res.send(docs);
+  });
 });
 
 app.get("/participants", (req, res) => {
