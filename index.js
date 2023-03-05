@@ -20,9 +20,6 @@ let participants = 0;
 let results = new Map();
 let total = 0;
 
-app.use("/", (req, res) => {
-  res.json({ message: "helloo" });
-});
 
 io.on("connect", (socket) => {
   console.log(`${socket.id} connected`);
