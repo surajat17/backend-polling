@@ -7,7 +7,11 @@ const app = express();
 const server = http.createServer(app);
 const io = socketio(server);
 const resultsDB = [];
-app.use(cors());
+const corsOptions = {
+  origin: 'http://127.0.0.1:5173',
+  credentials: true
+};
+app.use(cors(corsOptions));
 let students = [];
 let teacher = null;
 let onlineUsers = {};
