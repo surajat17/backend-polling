@@ -17,7 +17,7 @@ let question = null;
 let participants = 0;
 let total = 0;
 
-app.use(cors("*"));
+app.use(cors());
 
 io.on('connect', handleConnect);
 
@@ -45,6 +45,17 @@ function handleJoin({ role, user }, callback) {
   } else {
     students.push(user);
     students = students.filter((v, i, a) => a.findIndex((v2) => v2.sid === v.sid) === i);
+    if (question) {
+      const res = {
+        votes: Object.fromEntries(results),
+        participants,
+        total,
+        question: question.question,
+        correct: question.correct,
+      };
+      io.to(this.id).emit('question', question);
+      io.to(this.id).emit('results', res);
+    }
   }
   const connected = {
     students,
@@ -54,6 +65,7 @@ function handleJoin({ role, user }, callback) {
   io.emit('connected', connected);
   callback();
 }
+
 
 function handleSubmitQuestion(data, callback) {
   results.clear();
